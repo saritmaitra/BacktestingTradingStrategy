@@ -192,7 +192,7 @@ SPret = SPret[['Close', 'Direction']]
 SPret['SP_Returns'] = (np.log(SPret['Close'] / SPret['Close'].shift(1))).copy()
 
 
-# In[6]:
+# In[4]:
 
 
 SPret['Predicted_Signal'] = lda.predict(x)
@@ -219,6 +219,8 @@ if __name__ == "__main__":
     mu = np.mean(SPret["SP_Returns"])
     sigma = np.std(SPret["SP_Returns"])
     var = var_cov_var(P, c, mu, sigma)
+    print('Portfolio Value = 1e6 # 1,000,000 USD')
+    print("ConfidenceInterval = 0.99 # 99% confidence interval")
     print("ValueatRisk (VaR): $%0.2f" % var); 
 
 def calculate_return(SPret, split_value, symbol):
@@ -241,15 +243,25 @@ def plot_chart(cum_return, cum_strategy_return, symbol):
     
 plot_chart(cum_return, cum_strategy_return, symbol='E-mini S&P 500 Futures')
 
-def sharpe_ratio(symbol_returns, strategy_returns):
-    strategy_std = strategy_returns.std()
-    sharpe = (strategy_returns - symbol_returns) / strategy_std
-    return sharpe.mean()
+# logarithmic returns using the closing price 
+returns = np.log(SPret['Close'] / SPret['Close'].shift(1))
+volatility = returns.std() * np.sqrt(252*6.5*60*15) # 15 min frequency
 
-print("Sharpe ratio:",sharpe_ratio(cum_strategy_return, cum_return));
+"""
+Sharpe ratio for the strategy based on a
+benchmark of zero (i.e. no risk-free rate information).
+periods - Daily (252), Hourly (252*6.5), Minutely(252*6.5*60)
+"""
+sharpe_ratio = (returns.mean()) / volatility 
+
+"""
+if assumed the risk-free rate of return as 5%, sharpe value can be calculated using:
+(returns.mean() - 0.05) / volatility
+"""
+print("Sharpe Ratio:", sharpe_ratio)
 
 
-# In[10]:
+# In[5]:
 
 
 import statistics as stats
@@ -459,10 +471,127 @@ SPret = SPret.drop(['ClosePrice'],1)
 SPret
 
 
-# In[7]:
+# In[28]:
+
+
+SPret['positions'] = SPret['Predicted_Signal'].diff()
+fig = plt.figure(figsize = (15,5))
+ax1 = fig.add_subplot(111, ylabel='E-Mini 500 SP price in $')
+SPret['Close'].plot(ax=ax1, color='r', lw=2.)
+
+ax1.plot(SPret.loc[SPret.Predicted_Signal == 1.0].index,
+         SPret.Close[SPret.Predicted_Signal == 1.0],
+         '^', markersize=5, color='green')
+
+ax1.plot(SPret.loc[SPret.Predicted_Signal == -1.0].index,
+         SPret.Close[SPret.Predicted_Signal == -1.0],
+         'v', markersize=5, color='red')
+
+# Set the initial capital
+initial_capital= float(1000000.0)
+
+positions = DataFrame(index=SPret.index).fillna(0.0)
+portfolio = DataFrame(index=SPret.index).fillna(0.0)
+
+#fig = plt.figure(figsize = (15,5))
+positions['SP'] = SPret['Predicted_Signal']
+portfolio['positions'] = (positions.multiply(SPret['Close'], axis=0))
+portfolio['cash'] = initial_capital - (positions.diff().multiply(SPret['Close'], axis=0)).cumsum()
+portfolio['total'] = portfolio['positions'] + portfolio['cash']
+portfolio.plot()
+plt.show()
+
+
+fig = plt.figure(figsize = (15,5))
+ax1 = fig.add_subplot(111, ylabel='Portfolio value in $')
+portfolio['total'].plot(ax=ax1, lw=2.)
+ax1.plot(portfolio.loc[SPret.Predicted_Signal == 1.0].index, 
+         portfolio.total[SPret.Predicted_Signal == 1.0],'^', markersize=5, color='green')
+ax1.plot(portfolio.loc[SPret.Predicted_Signal == -1.0].index,
+         portfolio.total[SPret.Predicted_Signal == -1.0],'v', markersize=5, color='red')
+plt.show()
+
+
+# In[8]:
 
 
 SPret.to_csv("SP_backtest_experimental.csv", sep=",")
+
+
+# In[9]:
+
+
+pip install QuantStats
+
+
+# In[10]:
+
+
+import quantstats as qs
+
+# extend pandas functionality with metrics, etc.
+qs.extend_pandas()
+
+# fetch the daily returns for a stock
+stock = SPret.SP_Returns
+
+# show sharpe ratio
+qs.stats.sharpe(stock)
+
+# or using extend_pandas() :)
+stock.sharpe()
+
+
+# In[11]:
+
+
+qs.plots.snapshot(stock, title='SP Performance')
+
+# can also be called via:
+# stock.plot_snapshot(title='Facebook Performance')
+
+
+# In[12]:
+
+
+qs.reports.metrics(stock)
+
+
+# In[13]:
+
+
+qs.reports.plots(stock)
+
+
+# In[16]:
+
+
+qs.reports.full(stock)
+
+
+# In[15]:
+
+
+# Number of features
+n = 1000
+# Number of training examples
+m = 10000
+# Initialize X and W
+X = np.random.rand(n,m)
+W = np.random.rand(n,1)
+
+# Vectorized code
+t1=time.time()
+Z = np.dot(W.T,X)
+print("Time taken for vectorized code is : ",(time.time()-t1)*1000,"ms")
+
+# Loop code
+Z1 = np.zeros((1,m))
+t2 = time.time()
+for i in range(X.shape[1]):
+    for j in range(X.shape[0]):
+        Z[0][i] += W[j]*X[j][i]
+print("Time taken for Loop code is : ",(time.time()-t2)*1000,"ms")
 
 
 # In[ ]:
